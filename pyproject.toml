@@ -1,0 +1,64 @@
+[project]
+name = "agentroom"
+version = "0.1.0"
+description = "Multi-agent collaboration platform — AI agents research, debate, and build together"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "SparkVibe", email = "hello@sparkvibe.io" }
+]
+requires-python = ">=3.13"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "pydantic>=2.10.0",
+    "sse-starlette>=2.2.0",
+    "anthropic>=0.52.0",
+    "openai>=1.82.0",
+    "click>=8.1.0",
+    "rich>=13.9.0",
+    "pyyaml>=6.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/sparkvibe-io/AgentRoom"
+Repository = "https://github.com/sparkvibe-io/AgentRoom"
+Issues = "https://github.com/sparkvibe-io/AgentRoom/issues"
+
+[project.scripts]
+agentroom = "agentroom.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.2,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=1.0.0",
+    "httpx>=0.28.0",
+    "pyright>=1.1.390",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "TCH"]
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"

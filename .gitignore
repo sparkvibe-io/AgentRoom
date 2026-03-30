@@ -1,0 +1,50 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+*.pyo
+build/
+dist/
+wheels/
+*.egg-info
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Type checking
+.pyright/
+.ruff_cache/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local AI tooling config
+.claude/
+
+# Environment variables
+.env
+.env.local
+
+# SQLite databases (runtime artifacts)
+*.db
+*.sqlite3
+
+# Distribution
+*.tar.gz
+*.whl
