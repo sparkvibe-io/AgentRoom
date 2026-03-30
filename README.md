@@ -4,6 +4,10 @@ Multi-agent collaboration platform — AI agents research, debate, reach consens
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-64%20passing-brightgreen.svg)]()
+[![Ruff](https://img.shields.io/badge/ruff-0%20errors-brightgreen.svg)]()
+[![Pyright](https://img.shields.io/badge/pyright%20strict-0%20errors-brightgreen.svg)]()
+[![Bandit](https://img.shields.io/badge/bandit-0%20issues-brightgreen.svg)]()
 
 ## What is AgentRoom?
 
@@ -129,12 +133,15 @@ curl -X POST http://127.0.0.1:4000/api/rooms \
 ## Development
 
 ```bash
-uv sync                           # Install all dependencies
-uv run pytest tests/ -v           # Run the test suite
-uv run ruff check src/ tests/     # Lint
-uv run pyright src/               # Type check
-uv run agentroom start --reload   # Dev server with auto-reload
+uv sync                                  # Install all dependencies
+uv run python -m pytest tests/ -v        # Run 64 tests
+uv run ruff check src/ tests/            # Lint (0 errors)
+uv run python -m pyright src/            # Type check strict (0 errors)
+uv run bandit -r src/                    # Security scan (0 issues)
+uv run agentroom start --reload          # Dev server with auto-reload
 ```
+
+> **Note**: Use `uv run python -m pytest` (not `uv run pytest`) to avoid import resolution issues.
 
 ## Project Structure
 
@@ -153,13 +160,32 @@ src/agentroom/
 │   ├── room.py        # Room orchestration (lifecycle, turns, phases)
 │   └── prompt_builder.py
 ├── server/
-│   └── app.py         # FastAPI + WebSocket + embedded web UI
+│   └── app.py         # FastAPI + WebSocket + security middleware + embedded web UI
 ├── context/           # (planned) Context management / compaction
 └── cli.py             # Click CLI entry point
+
+docs/
+└── SECURITY.md        # Security posture and known limitations
+tests/
+└── unit/              # 64 tests (adapters, broker, protocol, room, server)
 ```
+
+## Security
+
+See [docs/SECURITY.md](docs/SECURITY.md) for full details. Key protections:
+
+- **Input validation** — `max_length` on all Pydantic fields, bounded query params
+- **WebSocket hardening** — payload size limits, JSON schema validation
+- **Security headers** — `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`
+- **Operation timeouts** — 120s per turn, 600s per round
+- **Cryptographic room IDs** — `secrets.token_urlsafe(16)`
+- **SQL injection prevention** — all queries parameterized
+- **Error sanitization** — no internal state in error messages
 
 ## Roadmap
 
+- [ ] Authentication and authorization
+- [ ] Rate limiting
 - [ ] Consensus/voting logic in room coordinator
 - [ ] Context compaction for long conversations
 - [ ] React web UI (replacing embedded HTML v1)
