@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from agentroom.protocol.models import Message
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS messages (
@@ -44,7 +48,7 @@ class MessageBroker:
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
-        self._listeners: list[callable] = []  # type: ignore[type-arg]
+        self._listeners: list[Callable[[Message, int], None]] = []
 
     def close(self) -> None:
         self._conn.close()
@@ -143,7 +147,7 @@ class MessageBroker:
         ]
         return messages
 
-    def on_message(self, callback: callable) -> None:  # type: ignore[type-arg]
+    def on_message(self, callback: Callable[[Message, int], None]) -> None:
         """Register a listener called on every publish."""
         self._listeners.append(callback)
 

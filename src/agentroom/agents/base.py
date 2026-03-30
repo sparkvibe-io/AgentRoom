@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
-from agentroom.protocol.models import AgentCard, Message
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+    from agentroom.protocol.models import AgentCard, Message
 
 
 class AgentAdapter(ABC):
@@ -37,14 +40,14 @@ class AgentAdapter(ABC):
         self,
         messages: list[Message],
         system_prompt: str,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncGenerator[str]:
         """Stream a response token-by-token."""
-        ...
+        yield ""  # pragma: no cover
 
-    async def connect(self) -> None:
+    async def connect(self) -> None:  # noqa: B027
         """Called when the adapter joins a room. Override for setup."""
 
-    async def disconnect(self) -> None:
+    async def disconnect(self) -> None:  # noqa: B027
         """Called when the adapter leaves a room. Override for cleanup."""
 
     async def is_available(self) -> bool:

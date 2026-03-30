@@ -6,19 +6,25 @@ import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from agentroom.agents.anthropic import AnthropicAdapter
-from agentroom.agents.base import AgentAdapter
 from agentroom.agents.openai import OpenAIAdapter
 from agentroom.broker.queue import MessageBroker
 from agentroom.coordinator.room import Room
-from agentroom.protocol.extensions import RoomPhase
+from agentroom.protocol.extensions import RoomPhase  # noqa: TCH001 (runtime: Pydantic model)
 from agentroom.protocol.models import AgentCard, Message, RoomConfig
+
+if TYPE_CHECKING:
+    from starlette.requests import Request
+    from starlette.responses import Response
+
+    from agentroom.agents.base import AgentAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +36,13 @@ _ws_connections: dict[str, list[WebSocket]] = {}  # room_id -> websockets
 # --- Request/response models ---
 
 class CreateRoomRequest(BaseModel):
-    goal: str
-    agents: list[AgentCard]
+    goal: str = Field(min_length=1, max_length=5000)
+    agents: list[AgentCard] = Field(min_length=1, max_length=10)
     lead_agent: str | None = None
 
 
 class UserMessageRequest(BaseModel):
-    content: str
+    content: str = Field(min_length=1, max_length=10_000)
 
 
 class PhaseChangeRequest(BaseModel):
@@ -59,7 +65,7 @@ def _build_adapter(card: AgentCard) -> AgentAdapter:
         case "openai" | "openai-compat":
             return OpenAIAdapter(card)
         case _:
-            raise ValueError(f"Unknown provider: {card.provider}")
+            raise ValueError("Unsupported agent provider")
 
 
 @asynccontextmanager
@@ -78,11 +84,22 @@ def create_app() -> FastAPI:
         lifespan=_lifespan,
     )
 
+    # --- Security headers middleware ---
+    class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next: Any) -> Response:
+            response: Response = await call_next(request)
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            return response
+
+    app.add_middleware(SecurityHeadersMiddleware)
+
     # --- Routes ---
 
     def _get_room(room_id: str) -> Room:
         if room_id not in _rooms:
-            raise HTTPException(status_code=404, detail=f"Room {room_id} not found")
+            raise HTTPException(status_code=404, detail="Room not found")
         return _rooms[room_id]
 
     @app.get("/")
@@ -99,8 +116,8 @@ def create_app() -> FastAPI:
             for card in req.agents:
                 adapter = _build_adapter(card)
                 room.add_agent(adapter)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid agent configuration") from None
 
         # Wire up WebSocket push
         def on_msg(msg: Message) -> None:
@@ -144,7 +161,9 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/api/rooms/{room_id}/messages")
-    async def get_messages(room_id: str, limit: int = 100) -> list[dict[str, Any]]:
+    async def get_messages(
+        room_id: str, limit: int = Query(default=100, ge=1, le=1000)
+    ) -> list[dict[str, Any]]:
         room = _get_room(room_id)
         messages = room.broker.get_history(room_id, limit=limit)
         return [m.model_dump() for m in messages]
@@ -158,7 +177,10 @@ def create_app() -> FastAPI:
     @app.post("/api/rooms/{room_id}/turn")
     async def run_turn(room_id: str, agent: str | None = None) -> dict[str, Any]:
         room = _get_room(room_id)
-        msg = await room.run_turn(agent)
+        try:
+            msg = await asyncio.wait_for(room.run_turn(agent), timeout=120.0)
+        except TimeoutError:
+            raise HTTPException(status_code=504, detail="Agent response timed out") from None
         if msg:
             return {"status": "ok", "message": msg.model_dump()}
         return {"status": "no_response"}
@@ -166,7 +188,10 @@ def create_app() -> FastAPI:
     @app.post("/api/rooms/{room_id}/round")
     async def run_round(room_id: str) -> dict[str, Any]:
         room = _get_room(room_id)
-        messages = await room.run_round()
+        try:
+            messages = await asyncio.wait_for(room.run_round(), timeout=600.0)
+        except TimeoutError:
+            raise HTTPException(status_code=504, detail="Round timed out") from None
         return {"status": "ok", "messages": [m.model_dump() for m in messages]}
 
     @app.post("/api/rooms/{room_id}/phase")
@@ -185,6 +210,8 @@ def create_app() -> FastAPI:
             _ws_connections[room_id] = []
         _ws_connections[room_id].append(websocket)
 
+        max_ws_payload = 32_768  # 32 KB
+
         try:
             # Send existing history
             if room_id in _rooms:
@@ -195,17 +222,39 @@ def create_app() -> FastAPI:
             # Keep alive — listen for user messages
             while True:
                 data = await websocket.receive_text()
-                parsed = json.loads(data)
 
-                if parsed.get("type") == "message" and room_id in _rooms:
+                if len(data) > max_ws_payload:
+                    await websocket.send_json({"error": "Message too large"})
+                    continue
+
+                try:
+                    parsed = json.loads(data)
+                except json.JSONDecodeError:
+                    await websocket.send_json({"error": "Invalid JSON"})
+                    continue
+
+                if not isinstance(parsed, dict):
+                    await websocket.send_json({"error": "Expected JSON object"})
+                    continue
+
+                payload = cast("dict[str, Any]", parsed)
+                msg_type = payload.get("type")
+                if msg_type == "message" and room_id in _rooms:
+                    content = payload.get("content")
+                    if not isinstance(content, str) or len(content) > 10_000:
+                        await websocket.send_json({"error": "Invalid or too-long content"})
+                        continue
                     room = _rooms[room_id]
-                    await room.user_message(parsed["content"])
-                elif parsed.get("type") == "turn" and room_id in _rooms:
+                    await room.user_message(content)
+                elif msg_type == "turn" and room_id in _rooms:
                     room = _rooms[room_id]
-                    await room.run_turn(parsed.get("agent"))
-                elif parsed.get("type") == "round" and room_id in _rooms:
+                    agent_name: str | None = payload.get("agent")
+                    await room.run_turn(agent_name)
+                elif msg_type == "round" and room_id in _rooms:
                     room = _rooms[room_id]
                     await room.run_round()
+                else:
+                    await websocket.send_json({"error": "Unknown message type"})
 
         except WebSocketDisconnect:
             _ws_connections.get(room_id, []).remove(websocket)

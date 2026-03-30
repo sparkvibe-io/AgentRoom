@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING
 
 import openai
 
 from agentroom.agents.base import AgentAdapter
-from agentroom.protocol.models import AgentCard, Message
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+    from openai.types.chat import ChatCompletionMessageParam
+
+    from agentroom.protocol.models import AgentCard, Message
 
 
 class OpenAIAdapter(AgentAdapter):
@@ -64,7 +69,7 @@ class OpenAIAdapter(AgentAdapter):
         self,
         messages: list[Message],
         system_prompt: str,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncGenerator[str]:
         if not self._client:
             raise RuntimeError("Adapter not connected — call connect() first")
 
@@ -82,10 +87,14 @@ class OpenAIAdapter(AgentAdapter):
     @staticmethod
     def _to_api_messages(
         messages: list[Message], system_prompt: str
-    ) -> list[dict[str, Any]]:
+    ) -> list[ChatCompletionMessageParam]:
         """Convert room messages to OpenAI chat format."""
-        api_msgs: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+        api_msgs: list[ChatCompletionMessageParam] = [
+            {"role": "system", "content": system_prompt}
+        ]
         for msg in messages:
-            role = "assistant" if msg.from_agent.startswith("@") else "user"
-            api_msgs.append({"role": role, "content": msg.content})
+            if msg.from_agent.startswith("@"):
+                api_msgs.append({"role": "assistant", "content": msg.content})
+            else:
+                api_msgs.append({"role": "user", "content": msg.content})
         return api_msgs

@@ -56,9 +56,14 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "TCH"]
+ignore = ["E501"]  # Line length handled by formatter; embedded HTML cannot comply
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["TCH"]  # Type-checking imports unnecessary in tests
 
 [tool.pyright]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
+reportUnusedFunction = false  # FastAPI route handlers appear unused to pyright

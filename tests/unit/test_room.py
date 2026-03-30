@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -60,7 +60,7 @@ def room() -> Room:
 def test_room_initial_state(room: Room) -> None:
     assert room.phase == RoomPhase.OPEN
     assert room.state.turn == 0
-    assert len(room.room_id) == 12
+    assert len(room.room_id) == 22  # secrets.token_urlsafe(16)
 
 
 def test_room_has_agents(room: Room) -> None:

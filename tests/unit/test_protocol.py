@@ -1,7 +1,6 @@
 """Tests for protocol models and extensions."""
 
 from agentroom.protocol.extensions import (
-    AgentRole,
     ConfidenceExtension,
     PhaseExtension,
     PhaseTransition,
@@ -39,7 +38,7 @@ def test_confidence_validation() -> None:
     assert ext.value == 0.85
     import pytest
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         ConfidenceExtension(value=1.5)  # out of range
 
 

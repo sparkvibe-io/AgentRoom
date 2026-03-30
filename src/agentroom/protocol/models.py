@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 import time
 import uuid
 from enum import StrEnum
@@ -26,10 +27,10 @@ class Message(BaseModel):
     """A message in the room queue. Wraps content + extension metadata."""
 
     id: str = Field(default_factory=lambda: uuid.uuid4().hex)
-    room_id: str
-    from_agent: str
+    room_id: str = Field(max_length=64)
+    from_agent: str = Field(max_length=100)
     type: MessageType
-    content: str
+    content: str = Field(max_length=100_000)
     extensions: dict[str, object] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time.time)
 
@@ -44,28 +45,28 @@ class AgentStatus(StrEnum):
 class AgentCard(BaseModel):
     """Describes an agent's identity and capabilities."""
 
-    name: str
-    provider: str  # anthropic, openai, google, xai, openai-compat, local
-    model: str
+    name: str = Field(min_length=1, max_length=100)
+    provider: str = Field(min_length=1, max_length=50)
+    model: str = Field(min_length=1, max_length=100)
     role: AgentRole = AgentRole.RESEARCHER
-    description: str = ""
-    capabilities: list[str] = Field(default_factory=list)
+    description: str = Field(default="", max_length=1000)
+    capabilities: list[str] = Field(default_factory=list, max_length=20)
 
 
 class RoomConfig(BaseModel):
     """Configuration for creating a room."""
 
-    goal: str
-    agents: list[AgentCard]
-    lead_agent: str | None = None  # name of the lead; first agent if None
-    max_turns: int = 100
-    auto_advance: bool = True  # auto-advance phases when consensus reached
+    goal: str = Field(min_length=1, max_length=5000)
+    agents: list[AgentCard] = Field(min_length=1, max_length=10)
+    lead_agent: str | None = None
+    max_turns: int = Field(default=100, ge=1, le=1000)
+    auto_advance: bool = True
 
 
 class RoomState(BaseModel):
     """Current state of a room."""
 
-    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
+    id: str = Field(default_factory=lambda: secrets.token_urlsafe(16))
     config: RoomConfig
     phase: RoomPhase = RoomPhase.OPEN
     turn: int = 0

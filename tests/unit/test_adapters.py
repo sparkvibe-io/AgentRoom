@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -52,9 +51,8 @@ class TestAnthropicAdapter:
     async def test_connect_requires_api_key(self) -> None:
         card = _make_card("anthropic")
         adapter = AnthropicAdapter(card, api_key=None)
-        with patch.dict("os.environ", {}, clear=True):
-            with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
-                await adapter.connect()
+        with patch.dict("os.environ", {}, clear=True), pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+            await adapter.connect()
 
     @pytest.mark.asyncio
     async def test_connect_with_explicit_key(self) -> None:
@@ -134,9 +132,8 @@ class TestOpenAIAdapter:
     async def test_connect_requires_api_key(self) -> None:
         card = _make_card("openai", "@gpt4o")
         adapter = OpenAIAdapter(card, api_key=None)
-        with patch.dict("os.environ", {}, clear=True):
-            with pytest.raises(ValueError, match="OPENAI_API_KEY"):
-                await adapter.connect()
+        with patch.dict("os.environ", {}, clear=True), pytest.raises(ValueError, match="OPENAI_API_KEY"):
+            await adapter.connect()
 
     @pytest.mark.asyncio
     async def test_connect_with_explicit_key(self) -> None:

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from agentroom.agents.base import AgentAdapter
+from typing import TYPE_CHECKING
+
 from agentroom.protocol.extensions import RoomPhase
-from agentroom.protocol.models import RoomState
+
+if TYPE_CHECKING:
+    from agentroom.agents.base import AgentAdapter
+    from agentroom.protocol.models import RoomState
 
 
 class RoomPromptBuilder:
@@ -20,7 +24,7 @@ class RoomPromptBuilder:
             "",
             "Rules:",
             "- Respond in markdown. Be concise and actionable.",
-            "- When voting on a proposal, clearly state +1 (agree), 0 (neutral), or -1 (block) with rationale.",
+            "- When voting on a proposal, state +1 (agree), 0 (neutral), or -1 (block) with rationale.",
             "- Build on what other agents have said — don't repeat their work.",
             "- If you disagree, explain why with evidence.",
         ]
@@ -37,4 +41,4 @@ class RoomPromptBuilder:
                 "suggestion (improvement), or blocking (must fix)."
             )
 
-        return "\n".join(line for line in lines if line is not None)
+        return "\n".join(line for line in lines if line)

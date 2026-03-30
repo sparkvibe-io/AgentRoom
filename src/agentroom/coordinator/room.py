@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
-from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING
 
-from agentroom.agents.base import AgentAdapter
 from agentroom.broker.queue import MessageBroker
 from agentroom.coordinator.prompt_builder import RoomPromptBuilder
 from agentroom.protocol.extensions import RoomPhase
@@ -17,6 +16,11 @@ from agentroom.protocol.models import (
     RoomConfig,
     RoomState,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, Callable
+
+    from agentroom.agents.base import AgentAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +45,7 @@ class Room:
         self.adapters: dict[str, AgentAdapter] = {}
         self._prompt_builder = RoomPromptBuilder()
         self._running = False
-        self._message_callbacks: list[Any] = []
+        self._message_callbacks: list[Callable[[Message], None]] = []
 
     @property
     def room_id(self) -> str:
@@ -51,7 +55,7 @@ class Room:
     def phase(self) -> RoomPhase:
         return self.state.phase
 
-    def on_message(self, callback: Any) -> None:
+    def on_message(self, callback: Callable[[Message], None]) -> None:
         """Register a callback for new messages (used by server for WebSocket push)."""
         self._message_callbacks.append(callback)
 
@@ -129,10 +133,7 @@ class Room:
             return None
 
         # Pick the next agent
-        if agent_name:
-            adapter = self.adapters.get(agent_name)
-        else:
-            adapter = self._next_agent()
+        adapter = self.adapters.get(agent_name) if agent_name else self._next_agent()
 
         if not adapter:
             return None
@@ -162,7 +163,7 @@ class Room:
         self.state.turn += 1
         return response
 
-    async def stream_turn(self, agent_name: str | None = None) -> AsyncIterator[tuple[str, str]]:
+    async def stream_turn(self, agent_name: str | None = None) -> AsyncGenerator[tuple[str, str]]:
         """Stream a single agent turn, yielding (agent_name, token) tuples."""
         if not self._running:
             return
@@ -215,7 +216,7 @@ class Room:
         """Notify all registered callbacks of a new message."""
         for cb in self._message_callbacks:
             try:
-                if asyncio.iscoroutinefunction(cb):
+                if inspect.iscoroutinefunction(cb):
                     asyncio.get_event_loop().create_task(cb(message))
                 else:
                     cb(message)

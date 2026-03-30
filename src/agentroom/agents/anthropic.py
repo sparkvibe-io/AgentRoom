@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING
 
 import anthropic
 
 from agentroom.agents.base import AgentAdapter
-from agentroom.protocol.models import AgentCard, Message
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+    from agentroom.protocol.models import AgentCard, Message
 
 
 class AnthropicAdapter(AgentAdapter):
@@ -60,7 +63,7 @@ class AnthropicAdapter(AgentAdapter):
         self,
         messages: list[Message],
         system_prompt: str,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncGenerator[str]:
         if not self._client:
             raise RuntimeError("Adapter not connected — call connect() first")
 
@@ -75,10 +78,13 @@ class AnthropicAdapter(AgentAdapter):
                 yield text
 
     @staticmethod
-    def _to_api_messages(messages: list[Message]) -> list[dict[str, Any]]:
+    def _to_api_messages(messages: list[Message]) -> list[anthropic.types.MessageParam]:
         """Convert room messages to Anthropic API format."""
-        api_msgs: list[dict[str, Any]] = []
+        api_msgs: list[anthropic.types.MessageParam] = []
         for msg in messages:
-            role = "assistant" if msg.from_agent.startswith("@") else "user"
-            api_msgs.append({"role": role, "content": msg.content})
+            role: anthropic.types.MessageParam = {  # type: ignore[assignment]
+                "role": "assistant" if msg.from_agent.startswith("@") else "user",
+                "content": msg.content,
+            }
+            api_msgs.append(role)
         return api_msgs
