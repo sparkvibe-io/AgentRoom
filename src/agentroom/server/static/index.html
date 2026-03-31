@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentRoom</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            surface: { DEFAULT: '#1c1c1c', card: '#262626', nav: '#2a2a2a', hover: '#333333' },
+            accent: { DEFAULT: '#7c83ff', hover: '#6b72e8' },
+          }
+        }
+      }
+    }
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="bg-surface text-gray-100 min-h-screen" x-data x-init="$store.app.init()">
+
+  <!-- Top Navigation -->
+  <nav class="flex justify-center py-3 border-b border-gray-800">
+    <div class="flex bg-surface-nav rounded-lg p-1 gap-1">
+      <button
+        @click="$store.app.view = 'agents'"
+        :class="$store.app.view === 'agents' ? 'bg-surface-hover text-white' : 'text-gray-500 hover:text-gray-300'"
+        class="px-5 py-1.5 rounded-md text-sm font-medium transition">
+        Agents
+      </button>
+      <button
+        x-show="$store.app.activeRoom"
+        @click="$store.app.view = 'room'"
+        :class="$store.app.view === 'room' ? 'bg-surface-hover text-white' : 'text-gray-500 hover:text-gray-300'"
+        class="px-5 py-1.5 rounded-md text-sm font-medium transition">
+        Room
+      </button>
+    </div>
+  </nav>
+
+  <!-- Agents View -->
+  <main x-show="$store.app.view === 'agents'" class="max-w-2xl mx-auto px-5 py-8">
+
+    <!-- Header -->
+    <div class="text-center mb-8">
+      <h1 class="text-2xl font-semibold text-gray-100">Your Agent Team</h1>
+      <p class="text-gray-500 text-sm mt-1">Configure agents, then create a room to start collaborating</p>
+    </div>
+
+    <!-- Agent Cards -->
+    <div class="flex flex-col gap-3 mb-6">
+      <template x-for="agent in $store.app.agents" :key="agent.id">
+        <div class="bg-surface-card rounded-xl p-4 flex items-center gap-4 border border-gray-800">
+          <div class="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0"
+               :class="$store.app.agentColor(agent.name).bg">
+            <span :class="$store.app.agentColor(agent.name).text" x-text="agent.name[0] === '@' ? agent.name[1].toUpperCase() : agent.name[0].toUpperCase()"></span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="font-semibold text-sm" :class="$store.app.agentColor(agent.name).text" x-text="agent.name"></span>
+              <span class="text-xs px-2 py-0.5 rounded-full"
+                    :class="$store.app.agentColor(agent.name).badge"
+                    x-text="agent.provider.toUpperCase()"></span>
+            </div>
+            <div class="text-gray-500 text-xs mt-0.5">
+              <span x-text="agent.model"></span>
+              <span x-show="agent.command"> &middot; <span x-text="agent.command"></span></span>
+              <span x-show="agent.base_url"> &middot; <span x-text="agent.base_url"></span></span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <button @click="$store.app.testAgent(agent.id)"
+                    class="text-gray-500 text-xs px-3 py-1 border border-gray-700 rounded-md hover:border-gray-500 transition"
+                    :disabled="agent._testing">
+              <span x-show="!agent._testing && agent._testResult === undefined">Test</span>
+              <span x-show="agent._testing">...</span>
+              <span x-show="agent._testResult === true" class="text-green-400">OK</span>
+              <span x-show="agent._testResult === false" class="text-red-400">Fail</span>
+            </button>
+            <button @click="$store.app.deleteAgent(agent.id)"
+                    class="text-gray-600 hover:text-red-400 text-sm px-1 transition">
+              &#x2715;
+            </button>
+          </div>
+        </div>
+      </template>
+
+      <!-- Add Agent Button -->
+      <div x-show="!$store.app.showAddForm"
+           @click="$store.app.showAddForm = true"
+           class="bg-surface-card rounded-xl p-4 flex items-center justify-center gap-2 border border-dashed border-gray-700 cursor-pointer hover:border-gray-500 transition text-gray-500">
+        <span class="text-lg">+</span>
+        <span class="text-sm">Add Agent</span>
+      </div>
+
+      <!-- Inline Add Form -->
+      <div x-show="$store.app.showAddForm" x-transition
+           class="bg-surface-card rounded-xl p-5 border border-gray-700">
+        <div class="flex items-center justify-between mb-4">
+          <span class="text-sm font-medium">New Agent</span>
+          <button @click="$store.app.showAddForm = false; $store.app.resetAddForm()"
+                  class="text-gray-500 hover:text-gray-300 text-sm">Cancel</button>
+        </div>
+
+        <div class="mb-3">
+          <label class="block text-xs text-gray-500 mb-1">Provider</label>
+          <select x-model="$store.app.addForm.provider"
+                  class="w-full bg-surface border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent">
+            <option value="cli">CLI (claude, gemini, codex)</option>
+            <option value="ollama">Ollama</option>
+            <option value="lmstudio">LM Studio</option>
+            <option value="anthropic">Anthropic (API key)</option>
+            <option value="openai">OpenAI (API key)</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="block text-xs text-gray-500 mb-1">Name</label>
+          <input x-model="$store.app.addForm.name" type="text" placeholder="@claude"
+                 class="w-full bg-surface border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent">
+        </div>
+
+        <div class="mb-3">
+          <label class="block text-xs text-gray-500 mb-1">Model</label>
+          <input x-model="$store.app.addForm.model" type="text" placeholder="sonnet-4"
+                 class="w-full bg-surface border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent">
+        </div>
+
+        <div x-show="$store.app.addForm.provider === 'cli'" class="mb-3">
+          <label class="block text-xs text-gray-500 mb-1">Command</label>
+          <input x-model="$store.app.addForm.command" type="text" placeholder="claude"
+                 class="w-full bg-surface border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent">
+        </div>
+
+        <div x-show="['ollama', 'lmstudio'].includes($store.app.addForm.provider)" class="mb-3">
+          <label class="block text-xs text-gray-500 mb-1">Base URL (optional)</label>
+          <input x-model="$store.app.addForm.base_url" type="text"
+                 :placeholder="$store.app.addForm.provider === 'ollama' ? 'http://localhost:11434/v1' : 'http://localhost:1234/v1'"
+                 class="w-full bg-surface border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent">
+        </div>
+
+        <div x-show="['anthropic', 'openai'].includes($store.app.addForm.provider)" class="mb-3">
+          <label class="block text-xs text-gray-500 mb-1">API Key</label>
+          <input x-model="$store.app.addForm.api_key" type="password" placeholder="sk-..."
+                 class="w-full bg-surface border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent">
+        </div>
+
+        <button @click="$store.app.saveAgent()"
+                class="w-full bg-accent hover:bg-accent-hover text-white py-2 rounded-lg text-sm font-medium transition">
+          Save Agent
+        </button>
+      </div>
+    </div>
+
+    <!-- Create Room -->
+    <div class="bg-surface-card rounded-xl p-5 border border-gray-800">
+      <div class="text-xs text-gray-500 uppercase tracking-wider mb-3">Create Room</div>
+      <input x-model="$store.app.roomGoal" type="text"
+             placeholder="What should the agents work on?"
+             class="w-full bg-surface border border-gray-700 rounded-lg px-4 py-2.5 text-sm mb-3 focus:outline-none focus:border-accent">
+      <div class="flex justify-between items-center">
+        <div class="flex flex-wrap gap-1.5">
+          <template x-for="agent in $store.app.agents" :key="agent.id">
+            <button @click="$store.app.toggleAgentSelection(agent.id)"
+                    class="text-xs px-2.5 py-1 rounded-full border transition"
+                    :class="$store.app.selectedAgents.includes(agent.id)
+                      ? $store.app.agentColor(agent.name).badge + ' border-transparent'
+                      : 'border-gray-700 text-gray-500 hover:border-gray-500'">
+              <span x-text="agent.name"></span>
+            </button>
+          </template>
+        </div>
+        <button @click="$store.app.createRoom()"
+                :disabled="!$store.app.roomGoal || $store.app.selectedAgents.length < 1"
+                class="bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-white px-5 py-2 rounded-lg text-sm font-medium transition flex-shrink-0">
+          Start Room
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- Room View -->
+  <main x-show="$store.app.view === 'room'" class="flex flex-col" style="height: calc(100vh - 49px);">
+
+    <!-- Room Header -->
+    <div class="max-w-2xl mx-auto w-full px-5 py-3 border-b border-gray-800 flex justify-between items-center">
+      <div>
+        <div class="text-sm font-medium text-gray-100" x-text="$store.app.activeRoom?.goal || ''"></div>
+        <div class="flex gap-1.5 mt-1">
+          <template x-for="name in ($store.app.activeRoom?.agents || [])" :key="name">
+            <span class="text-xs px-2 py-0.5 rounded-full"
+                  :class="$store.app.agentColor(name).badge"
+                  x-text="name"></span>
+          </template>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-purple-900/50 text-purple-300"
+                x-text="$store.app.activeRoom?.phase || ''"></span>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button @click="$store.app.runTurn()"
+                class="text-gray-400 text-xs px-3 py-1.5 border border-gray-700 rounded-md hover:border-gray-500 transition">
+          Next Turn
+        </button>
+        <button @click="$store.app.runRound()"
+                class="bg-accent hover:bg-accent-hover text-white text-xs px-3 py-1.5 rounded-md transition">
+          Run Round
+        </button>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div class="flex-1 overflow-y-auto" x-ref="messageList">
+      <div class="max-w-2xl mx-auto px-5 py-4 space-y-4">
+        <template x-for="msg in $store.app.messages" :key="msg.id">
+          <div>
+            <template x-if="msg.type === 'system' || msg.type === 'phase'">
+              <p class="text-xs text-gray-600 italic" x-text="msg.content"></p>
+            </template>
+            <template x-if="msg.type !== 'system' && msg.type !== 'phase'">
+              <div>
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-xs font-semibold" :class="$store.app.agentColor(msg.from_agent).text" x-text="msg.from_agent"></span>
+                  <span class="text-xs text-gray-600" x-text="$store.app.timeAgo(msg.created_at)"></span>
+                </div>
+                <div class="text-sm text-gray-200 leading-relaxed prose-content" x-html="$store.app.renderMarkdown(msg.content)"></div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Input -->
+    <div class="border-t border-gray-800">
+      <div class="max-w-2xl mx-auto px-5 py-3">
+        <form @submit.prevent="$store.app.sendMessage()" class="flex gap-2">
+          <input x-model="$store.app.messageInput" type="text"
+                 placeholder="Send a message to the room..."
+                 class="flex-1 bg-surface-card border border-gray-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent">
+          <button type="submit"
+                  class="bg-accent hover:bg-accent-hover text-white px-4 py-2.5 rounded-lg text-sm font-medium transition">
+            Send
+          </button>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
