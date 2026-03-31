@@ -201,11 +201,13 @@
       </div>
       <div class="flex gap-2">
         <button @click="$store.app.runTurn()"
-                class="text-gray-400 text-xs px-3 py-1.5 border border-gray-700 rounded-md hover:border-gray-500 transition">
+                :disabled="$store.app.thinking"
+                class="text-gray-400 text-xs px-3 py-1.5 border border-gray-700 rounded-md hover:border-gray-500 disabled:opacity-40 transition">
           Next Turn
         </button>
         <button @click="$store.app.runRound()"
-                class="bg-accent hover:bg-accent-hover text-white text-xs px-3 py-1.5 rounded-md transition">
+                :disabled="$store.app.thinking"
+                class="bg-accent hover:bg-accent-hover disabled:opacity-40 text-white text-xs px-3 py-1.5 rounded-md transition">
           Run Round
         </button>
       </div>
@@ -230,6 +232,16 @@
             </template>
           </div>
         </template>
+
+        <!-- Thinking indicator -->
+        <div x-show="$store.app.thinking" class="flex items-center gap-3 py-2">
+          <div class="flex gap-1">
+            <span class="w-2 h-2 bg-accent rounded-full animate-bounce" style="animation-delay: 0ms;"></span>
+            <span class="w-2 h-2 bg-accent rounded-full animate-bounce" style="animation-delay: 150ms;"></span>
+            <span class="w-2 h-2 bg-accent rounded-full animate-bounce" style="animation-delay: 300ms;"></span>
+          </div>
+          <span class="text-xs text-gray-500" x-text="$store.app.thinkingAgent + ' thinking...'"></span>
+        </div>
       </div>
     </div>
 

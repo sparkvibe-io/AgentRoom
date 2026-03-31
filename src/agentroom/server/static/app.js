@@ -25,6 +25,8 @@ document.addEventListener('alpine:init', () => {
     selectedAgents: [],
     roomGoal: '',
     messageInput: '',
+    thinking: false,
+    thinkingAgent: '',
     _colorMap: {},
 
     // --- Init ---
@@ -114,13 +116,23 @@ document.addEventListener('alpine:init', () => {
     },
 
     async runTurn() {
-      if (!this.activeRoom) return;
+      if (!this.activeRoom || this.thinking) return;
+      this.thinking = true;
+      this.thinkingAgent = 'Agent';
+      this._scrollToBottom();
       await this._api('POST', `/api/rooms/${this.activeRoom.id}/turn`);
+      this.thinking = false;
+      this.thinkingAgent = '';
     },
 
     async runRound() {
-      if (!this.activeRoom) return;
+      if (!this.activeRoom || this.thinking) return;
+      this.thinking = true;
+      this.thinkingAgent = 'Agents';
+      this._scrollToBottom();
       await this._api('POST', `/api/rooms/${this.activeRoom.id}/round`);
+      this.thinking = false;
+      this.thinkingAgent = '';
     },
 
     sendMessage() {
@@ -153,13 +165,17 @@ document.addEventListener('alpine:init', () => {
         if (msg.extensions?.['agentroom/phase']) {
           this.activeRoom.phase = msg.extensions['agentroom/phase'].current;
         }
-        this.$nextTick(() => {
-          const el = document.querySelector('[x-ref="messageList"]');
-          if (el) el.scrollTop = el.scrollHeight;
-        });
+        this._scrollToBottom();
       };
       ws.onclose = () => { this.ws = null; };
       this.ws = ws;
+    },
+
+    _scrollToBottom() {
+      setTimeout(() => {
+        const el = document.querySelector('[x-ref="messageList"]');
+        if (el) el.scrollTop = el.scrollHeight;
+      }, 50);
     },
 
     // --- Colors ---
