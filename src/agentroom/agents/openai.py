@@ -58,7 +58,7 @@ class OpenAIAdapter(AgentAdapter):
         if not self._client:
             raise RuntimeError("Adapter not connected — call connect() first")
 
-        api_messages = self._to_api_messages(messages, system_prompt)
+        api_messages = self._to_api_messages(messages, system_prompt, adapter_name=self.name)
         response = await self._client.chat.completions.create(
             model=self.card.model,
             messages=api_messages,
@@ -73,7 +73,7 @@ class OpenAIAdapter(AgentAdapter):
         if not self._client:
             raise RuntimeError("Adapter not connected — call connect() first")
 
-        api_messages = self._to_api_messages(messages, system_prompt)
+        api_messages = self._to_api_messages(messages, system_prompt, adapter_name=self.name)
         stream = await self._client.chat.completions.create(
             model=self.card.model,
             messages=api_messages,
@@ -86,14 +86,14 @@ class OpenAIAdapter(AgentAdapter):
 
     @staticmethod
     def _to_api_messages(
-        messages: list[Message], system_prompt: str
+        messages: list[Message], system_prompt: str, adapter_name: str
     ) -> list[ChatCompletionMessageParam]:
         """Convert room messages to OpenAI chat format."""
         api_msgs: list[ChatCompletionMessageParam] = [
             {"role": "system", "content": system_prompt}
         ]
         for msg in messages:
-            if msg.from_agent.startswith("@"):
+            if msg.from_agent == adapter_name:
                 api_msgs.append({"role": "assistant", "content": msg.content})
             else:
                 api_msgs.append({"role": "user", "content": msg.content})

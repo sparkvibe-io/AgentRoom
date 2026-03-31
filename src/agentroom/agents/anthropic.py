@@ -50,7 +50,7 @@ class AnthropicAdapter(AgentAdapter):
         if not self._client:
             raise RuntimeError("Adapter not connected — call connect() first")
 
-        api_messages = self._to_api_messages(messages)
+        api_messages = self._to_api_messages(messages, adapter_name=self.name)
         response = await self._client.messages.create(
             model=self.card.model,
             max_tokens=4096,
@@ -67,7 +67,7 @@ class AnthropicAdapter(AgentAdapter):
         if not self._client:
             raise RuntimeError("Adapter not connected — call connect() first")
 
-        api_messages = self._to_api_messages(messages)
+        api_messages = self._to_api_messages(messages, adapter_name=self.name)
         async with self._client.messages.stream(
             model=self.card.model,
             max_tokens=4096,
@@ -78,12 +78,14 @@ class AnthropicAdapter(AgentAdapter):
                 yield text
 
     @staticmethod
-    def _to_api_messages(messages: list[Message]) -> list[anthropic.types.MessageParam]:
+    def _to_api_messages(
+        messages: list[Message], adapter_name: str
+    ) -> list[anthropic.types.MessageParam]:
         """Convert room messages to Anthropic API format."""
         api_msgs: list[anthropic.types.MessageParam] = []
         for msg in messages:
             role: anthropic.types.MessageParam = {  # type: ignore[assignment]
-                "role": "assistant" if msg.from_agent.startswith("@") else "user",
+                "role": "assistant" if msg.from_agent == adapter_name else "user",
                 "content": msg.content,
             }
             api_msgs.append(role)

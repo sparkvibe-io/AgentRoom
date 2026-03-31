@@ -102,15 +102,26 @@ class TestAnthropicAdapter:
 
     def test_to_api_messages_role_mapping(self) -> None:
         messages = _make_messages()
-        api_msgs = AnthropicAdapter._to_api_messages(messages)
+        api_msgs = AnthropicAdapter._to_api_messages(messages, adapter_name="@claude")
 
         assert len(api_msgs) == 2
-        # user message → "user" role
         assert api_msgs[0]["role"] == "user"
         assert api_msgs[0]["content"] == "Hello"
-        # @claude message (starts with @) → "assistant" role
         assert api_msgs[1]["role"] == "assistant"
         assert api_msgs[1]["content"] == "Hi there!"
+
+    def test_to_api_messages_multi_agent_role_mapping(self) -> None:
+        """In a multi-agent room, only the adapter's own messages are 'assistant'."""
+        messages = [
+            Message(room_id="room1", from_agent="user", type=MessageType.TEXT, content="Hello"),
+            Message(room_id="room1", from_agent="@claude", type=MessageType.TEXT, content="I think..."),
+            Message(room_id="room1", from_agent="@gpt4o", type=MessageType.TEXT, content="I disagree..."),
+        ]
+        api_msgs = AnthropicAdapter._to_api_messages(messages, adapter_name="@claude")
+
+        assert api_msgs[0]["role"] == "user"      # user -> user
+        assert api_msgs[1]["role"] == "assistant"  # @claude (self) -> assistant
+        assert api_msgs[2]["role"] == "user"       # @gpt4o (other agent) -> user
 
     @pytest.mark.asyncio
     async def test_is_available_when_disconnected(self) -> None:
@@ -184,7 +195,7 @@ class TestOpenAIAdapter:
 
     def test_to_api_messages_includes_system(self) -> None:
         messages = _make_messages()
-        api_msgs = OpenAIAdapter._to_api_messages(messages, "System prompt")
+        api_msgs = OpenAIAdapter._to_api_messages(messages, "System prompt", adapter_name="@claude")
 
         assert api_msgs[0]["role"] == "system"
         assert api_msgs[0]["content"] == "System prompt"
@@ -192,11 +203,23 @@ class TestOpenAIAdapter:
 
     def test_to_api_messages_role_mapping(self) -> None:
         messages = _make_messages()
-        api_msgs = OpenAIAdapter._to_api_messages(messages, "sys")
+        api_msgs = OpenAIAdapter._to_api_messages(messages, "sys", adapter_name="@claude")
 
-        # Index 0 is system, 1 is user's message, 2 is @claude's
         assert api_msgs[1]["role"] == "user"
         assert api_msgs[2]["role"] == "assistant"
+
+    def test_to_api_messages_multi_agent_role_mapping(self) -> None:
+        """In a multi-agent room, only the adapter's own messages are 'assistant'."""
+        messages = [
+            Message(room_id="room1", from_agent="user", type=MessageType.TEXT, content="Hello"),
+            Message(room_id="room1", from_agent="@gpt4o", type=MessageType.TEXT, content="I think..."),
+            Message(room_id="room1", from_agent="@claude", type=MessageType.TEXT, content="I disagree..."),
+        ]
+        api_msgs = OpenAIAdapter._to_api_messages(messages, "sys", adapter_name="@gpt4o")
+
+        assert api_msgs[1]["role"] == "user"       # user -> user
+        assert api_msgs[2]["role"] == "assistant"   # @gpt4o (self) -> assistant
+        assert api_msgs[3]["role"] == "user"        # @claude (other agent) -> user
 
     @pytest.mark.asyncio
     async def test_is_available_when_disconnected(self) -> None:
