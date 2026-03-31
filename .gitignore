@@ -48,3 +48,5 @@ Thumbs.db
 # Distribution
 *.tar.gz
 *.whl
+.superpowers/
+.memorymesh/
