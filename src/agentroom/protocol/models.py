@@ -51,6 +51,13 @@ class AgentCard(BaseModel):
     role: AgentRole = AgentRole.RESEARCHER
     description: str = Field(default="", max_length=1000)
     capabilities: list[str] = Field(default_factory=list, max_length=20)
+    # CLI adapter fields
+    command: str | None = Field(default=None, max_length=200)
+    cli_args: list[str] = Field(default_factory=list, max_length=50)
+    # Local LLM / OpenAI-compat fields
+    base_url: str | None = Field(default=None, max_length=500)
+    # API key (optional -- not needed for CLI or local LLMs)
+    api_key: str | None = Field(default=None, max_length=500)
 
 
 class RoomConfig(BaseModel):

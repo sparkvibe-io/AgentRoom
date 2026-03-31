@@ -66,3 +66,28 @@ def test_room_state_explicit_lead() -> None:
     )
     state = RoomState(config=config)
     assert state.lead == "@gpt4o"
+
+
+def test_agent_card_cli_fields() -> None:
+    card = AgentCard(
+        name="@claude-cli",
+        provider="cli",
+        model="sonnet-4",
+        command="claude",
+        cli_args=["--model", "sonnet-4"],
+    )
+    assert card.command == "claude"
+    assert card.cli_args == ["--model", "sonnet-4"]
+    assert card.base_url is None
+    assert card.api_key is None
+
+
+def test_agent_card_ollama_fields() -> None:
+    card = AgentCard(
+        name="@llama",
+        provider="ollama",
+        model="llama3",
+        base_url="http://localhost:11434/v1",
+    )
+    assert card.base_url == "http://localhost:11434/v1"
+    assert card.command is None
