@@ -6,6 +6,7 @@ import json
 import sqlite3
 from typing import TYPE_CHECKING
 
+from agentroom.protocol.agent_config import AgentConfig
 from agentroom.protocol.models import Message
 
 if TYPE_CHECKING:
@@ -32,6 +33,19 @@ CREATE TABLE IF NOT EXISTS agent_cursors (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_room_seq ON messages (room_id, seq);
+
+CREATE TABLE IF NOT EXISTS agent_configs (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    provider   TEXT NOT NULL,
+    model      TEXT NOT NULL,
+    command    TEXT,
+    cli_args   TEXT NOT NULL DEFAULT '[]',
+    base_url   TEXT,
+    api_key    TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
 """
 
 
@@ -159,3 +173,68 @@ class MessageBroker:
             (agent_id, room_id),
         ).fetchone()
         return row[0] if row else 0
+
+    # --- Agent Config CRUD ---
+
+    def save_agent_config(self, config: AgentConfig) -> None:
+        """Insert or update an agent configuration."""
+        self._conn.execute(
+            """INSERT INTO agent_configs (id, name, provider, model, command, cli_args,
+                   base_url, api_key, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (id) DO UPDATE SET
+                   name=excluded.name, provider=excluded.provider, model=excluded.model,
+                   command=excluded.command, cli_args=excluded.cli_args,
+                   base_url=excluded.base_url, api_key=excluded.api_key,
+                   updated_at=excluded.updated_at""",
+            (
+                config.id,
+                config.name,
+                config.provider,
+                config.model,
+                config.command,
+                json.dumps(config.cli_args),
+                config.base_url,
+                config.api_key,
+                config.created_at,
+                config.updated_at,
+            ),
+        )
+        self._conn.commit()
+
+    def get_agent_config(self, config_id: str) -> AgentConfig | None:
+        """Fetch an agent configuration by ID."""
+        row = self._conn.execute(
+            """SELECT id, name, provider, model, command, cli_args, base_url, api_key,
+                   created_at, updated_at
+               FROM agent_configs WHERE id = ?""",
+            (config_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return AgentConfig(
+            id=row[0], name=row[1], provider=row[2], model=row[3], command=row[4],
+            cli_args=json.loads(row[5]), base_url=row[6], api_key=row[7],
+            created_at=row[8], updated_at=row[9],
+        )
+
+    def list_agent_configs(self) -> list[AgentConfig]:
+        """List all saved agent configurations."""
+        rows = self._conn.execute(
+            """SELECT id, name, provider, model, command, cli_args, base_url, api_key,
+                   created_at, updated_at
+               FROM agent_configs ORDER BY created_at"""
+        ).fetchall()
+        return [
+            AgentConfig(
+                id=r[0], name=r[1], provider=r[2], model=r[3], command=r[4],
+                cli_args=json.loads(r[5]), base_url=r[6], api_key=r[7],
+                created_at=r[8], updated_at=r[9],
+            )
+            for r in rows
+        ]
+
+    def delete_agent_config(self, config_id: str) -> None:
+        """Delete an agent configuration by ID."""
+        self._conn.execute("DELETE FROM agent_configs WHERE id = ?", (config_id,))
+        self._conn.commit()
