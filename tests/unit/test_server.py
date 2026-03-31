@@ -19,8 +19,9 @@ def app():
 @pytest_asyncio.fixture
 async def client(app):
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            yield c
 
 
 @pytest.mark.asyncio
@@ -193,3 +194,111 @@ async def test_openapi_schema_available(client: AsyncClient) -> None:
     assert resp.status_code == 200
     schema = resp.json()
     assert schema["info"]["title"] == "AgentRoom"
+
+
+@pytest.mark.asyncio
+async def test_create_room_with_cli_provider(client: AsyncClient) -> None:
+    with patch("agentroom.server.app.CLIAdapter") as mock_cli:
+        instance = AsyncMock()
+        instance.name = "@claude-cli"
+        mock_cli.return_value = instance
+
+        resp = await client.post("/api/rooms", json={
+            "goal": "CLI test",
+            "agents": [
+                {"name": "@claude-cli", "provider": "cli", "model": "sonnet-4", "command": "claude"},
+            ],
+        })
+        assert resp.status_code == 200
+        assert "@claude-cli" in resp.json()["agents"]
+
+
+@pytest.mark.asyncio
+async def test_create_room_with_ollama_provider(client: AsyncClient) -> None:
+    with patch("agentroom.server.app.OllamaAdapter") as mock_ollama:
+        instance = AsyncMock()
+        instance.name = "@llama"
+        mock_ollama.return_value = instance
+
+        resp = await client.post("/api/rooms", json={
+            "goal": "Ollama test",
+            "agents": [
+                {"name": "@llama", "provider": "ollama", "model": "llama3"},
+            ],
+        })
+        assert resp.status_code == 200
+        assert "@llama" in resp.json()["agents"]
+
+
+@pytest.mark.asyncio
+async def test_create_agent_config(client: AsyncClient) -> None:
+    resp = await client.post("/api/agents", json={
+        "name": "@claude-cli",
+        "provider": "cli",
+        "model": "sonnet-4",
+        "command": "claude",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "@claude-cli"
+    assert data["api_key"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_agent_configs(client: AsyncClient) -> None:
+    await client.post("/api/agents", json={
+        "name": "@a1", "provider": "cli", "model": "m1", "command": "claude",
+    })
+    resp = await client.get("/api/agents")
+    assert resp.status_code == 200
+    assert len(resp.json()) >= 1
+
+
+@pytest.mark.asyncio
+async def test_get_agent_config(client: AsyncClient) -> None:
+    create_resp = await client.post("/api/agents", json={
+        "name": "@a1", "provider": "cli", "model": "m1", "command": "claude",
+    })
+    agent_id = create_resp.json()["id"]
+    resp = await client.get(f"/api/agents/{agent_id}")
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "@a1"
+
+
+@pytest.mark.asyncio
+async def test_delete_agent_config(client: AsyncClient) -> None:
+    create_resp = await client.post("/api/agents", json={
+        "name": "@del", "provider": "cli", "model": "m1", "command": "claude",
+    })
+    agent_id = create_resp.json()["id"]
+    resp = await client.delete(f"/api/agents/{agent_id}")
+    assert resp.status_code == 200
+    resp = await client.get(f"/api/agents/{agent_id}")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_agent_config_redacts_api_key(client: AsyncClient) -> None:
+    await client.post("/api/agents", json={
+        "name": "@gpt", "provider": "openai", "model": "gpt-4o", "api_key": "sk-abc123xyz789",
+    })
+    resp = await client.get("/api/agents")
+    agents = resp.json()
+    gpt_agent = next(a for a in agents if a["name"] == "@gpt")
+    assert gpt_agent["api_key"] == "...z789"
+
+
+@pytest.mark.asyncio
+async def test_test_agent_connectivity(client: AsyncClient) -> None:
+    with patch("agentroom.server.app._build_adapter") as mock_build:
+        instance = AsyncMock()
+        instance.is_available = AsyncMock(return_value=True)
+        mock_build.return_value = instance
+
+        create_resp = await client.post("/api/agents", json={
+            "name": "@claude-cli", "provider": "cli", "model": "sonnet-4", "command": "claude",
+        })
+        agent_id = create_resp.json()["id"]
+        resp = await client.post(f"/api/agents/{agent_id}/test")
+        assert resp.status_code == 200
+        assert resp.json()["available"] is True

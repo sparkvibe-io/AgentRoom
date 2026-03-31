@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, cast
 
@@ -14,9 +15,12 @@ from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from agentroom.agents.anthropic import AnthropicAdapter
+from agentroom.agents.cli import CLIAdapter
+from agentroom.agents.ollama import OllamaAdapter
 from agentroom.agents.openai import OpenAIAdapter
 from agentroom.broker.queue import MessageBroker
 from agentroom.coordinator.room import Room
+from agentroom.protocol.agent_config import AgentConfig
 from agentroom.protocol.extensions import RoomPhase  # noqa: TCH001 (runtime: Pydantic model)
 from agentroom.protocol.models import AgentCard, Message, RoomConfig
 
@@ -31,6 +35,7 @@ logger = logging.getLogger(__name__)
 # --- In-memory room registry ---
 _rooms: dict[str, Room] = {}
 _ws_connections: dict[str, list[WebSocket]] = {}  # room_id -> websockets
+_config_broker: MessageBroker | None = None
 
 
 # --- Request/response models ---
@@ -57,23 +62,43 @@ class RoomSummary(BaseModel):
     agents: list[str]
 
 
+class CreateAgentConfigRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    provider: str = Field(min_length=1, max_length=50)
+    model: str = Field(min_length=1, max_length=100)
+    command: str | None = Field(default=None, max_length=200)
+    cli_args: list[str] = Field(default_factory=list, max_length=50)
+    base_url: str | None = Field(default=None, max_length=500)
+    api_key: str | None = Field(default=None, max_length=500)
+
+
 def _build_adapter(card: AgentCard) -> AgentAdapter:
     """Create the right adapter based on provider name."""
     match card.provider:
         case "anthropic":
-            return AnthropicAdapter(card)
-        case "openai" | "openai-compat":
-            return OpenAIAdapter(card)
+            return AnthropicAdapter(card, api_key=card.api_key)
+        case "openai":
+            return OpenAIAdapter(card, api_key=card.api_key)
+        case "openai-compat":
+            return OpenAIAdapter(card, api_key=card.api_key, base_url=card.base_url)
+        case "ollama":
+            return OllamaAdapter(card, provider_type="ollama")
+        case "lmstudio":
+            return OllamaAdapter(card, provider_type="lmstudio")
+        case "cli":
+            return CLIAdapter(card)
         case _:
             raise ValueError("Unsupported agent provider")
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    global _config_broker  # noqa: PLW0603
+    _config_broker = MessageBroker()
     yield
-    # Cleanup: stop all rooms
     for room in _rooms.values():
         await room.stop()
+    _config_broker.close()
 
 
 def create_app() -> FastAPI:
@@ -199,6 +224,88 @@ def create_app() -> FastAPI:
         room = _get_room(room_id)
         room.set_phase(req.phase)
         return {"phase": req.phase.value}
+
+    # --- Agent Config CRUD ---
+
+    @app.post("/api/agents")
+    async def create_agent_config(req: CreateAgentConfigRequest) -> dict[str, Any]:
+        assert _config_broker is not None
+        config = AgentConfig(
+            name=req.name,
+            provider=req.provider,
+            model=req.model,
+            command=req.command,
+            cli_args=req.cli_args,
+            base_url=req.base_url,
+            api_key=req.api_key,
+        )
+        _config_broker.save_agent_config(config)
+        return config.redacted().model_dump()
+
+    @app.get("/api/agents")
+    async def list_agent_configs() -> list[dict[str, Any]]:
+        assert _config_broker is not None
+        configs = _config_broker.list_agent_configs()
+        return [c.redacted().model_dump() for c in configs]
+
+    @app.get("/api/agents/{agent_id}")
+    async def get_agent_config(agent_id: str) -> dict[str, Any]:
+        assert _config_broker is not None
+        config = _config_broker.get_agent_config(agent_id)
+        if not config:
+            raise HTTPException(status_code=404, detail="Agent config not found")
+        return config.redacted().model_dump()
+
+    @app.put("/api/agents/{agent_id}")
+    async def update_agent_config(
+        agent_id: str, req: CreateAgentConfigRequest
+    ) -> dict[str, Any]:
+        assert _config_broker is not None
+        existing = _config_broker.get_agent_config(agent_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Agent config not found")
+        updated = existing.model_copy(update={
+            "name": req.name,
+            "provider": req.provider,
+            "model": req.model,
+            "command": req.command,
+            "cli_args": req.cli_args,
+            "base_url": req.base_url,
+            "api_key": req.api_key,
+            "updated_at": time.time(),
+        })
+        _config_broker.save_agent_config(updated)
+        return updated.redacted().model_dump()
+
+    @app.delete("/api/agents/{agent_id}")
+    async def delete_agent_config(agent_id: str) -> dict[str, str]:
+        assert _config_broker is not None
+        _config_broker.delete_agent_config(agent_id)
+        return {"status": "deleted"}
+
+    @app.post("/api/agents/{agent_id}/test")
+    async def test_agent_connectivity(agent_id: str) -> dict[str, Any]:
+        assert _config_broker is not None
+        config = _config_broker.get_agent_config(agent_id)
+        if not config:
+            raise HTTPException(status_code=404, detail="Agent config not found")
+        card = AgentCard(
+            name=config.name,
+            provider=config.provider,
+            model=config.model,
+            command=config.command,
+            cli_args=config.cli_args,
+            base_url=config.base_url,
+            api_key=config.api_key,
+        )
+        adapter = _build_adapter(card)
+        try:
+            await adapter.connect()
+            available = await adapter.is_available()
+            await adapter.disconnect()
+        except Exception as e:
+            return {"available": False, "error": str(e)}
+        return {"available": available}
 
     # --- WebSocket ---
 
