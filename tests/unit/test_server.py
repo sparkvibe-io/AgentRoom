@@ -121,8 +121,7 @@ async def test_create_room_empty_agents(client: AsyncClient) -> None:
         "goal": "Test",
         "agents": [],
     })
-    # Should succeed or fail gracefully — an empty room is valid structurally
-    assert resp.status_code in (200, 422, 500)
+    assert resp.status_code == 422  # Pydantic min_length=1 rejects empty list
 
 
 @pytest.mark.asyncio
